@@ -1,28 +1,30 @@
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options
-import pandas as pd
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
+import pandas as pd
+import time
 
 def scrape_data():
     url = "https://houstonspca.org/available-pets/"
     
     options = Options()
-    options.headless = True
+    options.headless = False  # Set to True to run in the background
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     
     driver.get(url)
     
-    html = driver.page_source
-    print(html[:2000])  # first 2000 char for debugging
-    
     data = []
     
-    try:
+    while True:
+        print("Scraping page:", driver.current_url)
+        
+        # Locate pet cards on the current page
         pet_cards = driver.find_elements(By.CSS_SELECTOR, '.pet-card')
-        print(f"Found {len(pet_cards)} pet cards.")  # Debugging info
-    
+        
         for card in pet_cards:
             try:
                 name = card.find_element(By.CSS_SELECTOR, '.pet-card__title').text.strip()
@@ -46,10 +48,25 @@ def scrape_data():
                 }
                 data.append(animal_data)
             except Exception as e:
-                print(f"Error processing a pet card: {e}")  # Debugging info
-    
-    except Exception as e:
-        print(f"Error finding pet cards: {e}")  # Debugging info
+                print(f"Error processing a pet card: {e}")
+        
+        # Check for the "Next" button and navigate to the next page
+        try:
+            next_button = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.CSS_SELECTOR, '.next.page-numbers'))
+            )
+            next_url = next_button.get_attribute('href')
+            
+            if next_url:
+                print("Navigating to next page:", next_url)
+                driver.get(next_url)
+                time.sleep(5)  # Wait for the page to load completely
+            else:
+                print("No more pages or 'Next' button not found.")
+                break
+        except Exception as e:
+            print(f"Error or no more pages: {e}")
+            break
     
     driver.quit()
     
@@ -60,5 +77,5 @@ def save_to_csv(df, filename):
 
 if __name__ == "__main__":
     df = scrape_data()
-    print(df.head())  
+    print(df.head())
     save_to_csv(df, 'houston_spca_data.csv')
